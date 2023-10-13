@@ -4,4 +4,5 @@ using LinearAlgebra, OpenCL
 include("kernels.jl")
 include("struct.jl")
 include("driver.jl")
+include("mcmc.jl")
 end
