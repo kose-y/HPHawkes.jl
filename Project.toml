@@ -1,7 +1,11 @@
 name = "HPHawkes"
 uuid = "3da29ac6-ae4f-483c-8304-61a24d15370b"
 authors = ["Seyoon Ko <kos@ucla.edu> and contributors"]
-version = "1.0.0-DEV"
+version = "0.1.0-DEV"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+OpenCL = "08131aa3-fb12-5dee-8b74-c09406e224a2"
 
 [compat]
 julia = "1"
