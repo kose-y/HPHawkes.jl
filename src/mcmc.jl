@@ -1,8 +1,28 @@
-using Distributions, Random, Plots, StatsPlots
+using Distributions, Random, Plots, StatsPlots, OpenCL
+
+function log_prior(x)
+    #L = length(x)
+    #- sum(x .^ 2 ./ (1:L)) / 2.0
+    - sum(x .^ 2) / 2.0
+end
+
+function log_likelihood(d,x)
+#     T = RealType
+#     x = .exp(x)
+# # computes loglikelihood
+#     HPHawkes.loglik(d::HPHawkes.HawkesStorage{T}, 
+#     x[1], #sigmaXprec
+#     x[2], #tauXprec 
+#     x[3], #tauTprec, 
+#     x[4], #omega 
+#     x[5], #theta::T
+#     x[6], #mu0::T, 
+#     2)
+    0
+end
 
 function log_posterior(x)
-    L = length(x)
-    - sum(x .^ 2 ./ (1:L)) / 2.0
+    log_prior(x) + log_likelihood(d,x)
 end
 
 function delta(n)
@@ -63,7 +83,8 @@ end
 
 output = mh(1000000,4)
 
-#plot(output[:,4])
-density(output[:,1])
-plot!(Normal(0,1))
+plot(output[:,4])
+# density(output[:,1])
+# plot!(Normal(0,1))
+
 
