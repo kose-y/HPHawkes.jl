@@ -1,4 +1,8 @@
-using Distributions, Random, Plots, StatsPlots, OpenCL
+using Distributions, Random, Plots, StatsPlots, OpenCL, RData, DataFrames
+
+function update_data(seed)
+    run(`Rscript ../covid_hosp/code/update_locs.R -seed $seed "&"`)
+end
 
 function log_prior(x)
     #L = length(x)
@@ -30,13 +34,20 @@ function delta(n)
 end
 
 
-function mh(iterations,parameter_count,target=0.5)
+function mh(iterations,parameter_count,target=0.5,up_dat=nothing)
     sigma       = [1.0, 1.0, 1.0, 1.0]          # proposal standard deviation
     #d           = Normal(0.0, sigma) # proposal distribution
     adapt_bound = 50
     accept      = [0, 0, 0, 0]
     props       = [0, 0, 0, 0]
     acceptances = 0
+    if !isnothing(up_dat)
+        seed = 1
+        #rm("../covid_hosp/seeds.txt")
+        open("../covid_hosp/seeds.txt", "w") do file
+            write(file, string(1))
+        end
+    end
 
     states = zeros(iterations,parameter_count)
     states[1,:] = rand(d,parameter_count) 
@@ -75,6 +86,19 @@ function mh(iterations,parameter_count,target=0.5)
 
         if mod(i, 10000) == 0
             print(i, " ", sigma, "\n")
+        end
+
+        if !isnothing(up_dat)
+            s = open("../covid_hosp/seeds.txt") do f
+                parse(Int, split(readline(f), " ")[end])
+            end
+
+            if s > seed 
+                seed += 1
+                # load data
+                df = load("dataComplete.rds")
+                Threads.@spawn update_data(seed)
+            end
         end
     end
     print("Acceptance rate: ", acceptances/(iterations-1))
