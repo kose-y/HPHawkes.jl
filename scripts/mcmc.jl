@@ -34,12 +34,12 @@ function delta(n)
 end
 
 
-function mh(iterations,parameter_count,target=0.5,up_dat=nothing)
-    sigma       = [1.0, 1.0, 1.0, 1.0]          # proposal standard deviation
+function mh(data, iterations,parameter_count,target=0.5,up_dat=nothing)
+    sigma       = ones(parameter_count)          # proposal standard deviation
     #d           = Normal(0.0, sigma) # proposal distribution
     adapt_bound = 50
-    accept      = [0, 0, 0, 0]
-    props       = [0, 0, 0, 0]
+    accept      = zeros(Int, parameter_count)
+    props       = zeros(Int, parameter_count)
     acceptances = 0
     if !isnothing(up_dat)
         seed = 1
@@ -50,25 +50,25 @@ function mh(iterations,parameter_count,target=0.5,up_dat=nothing)
     end
 
     states = zeros(iterations,parameter_count)
-    states[1,:] = rand(d,parameter_count) 
-    curr_log_prob = log_posterior(states[1,:])
+    states[1,:] = rand(Normal(0.0, 1.0),parameter_count) 
+    curr_log_prob = log_posterior(data, states[1,:])
 
     for i = 2:iterations
         p          = rand(1:parameter_count)      # choose parameter to update
         prop_state = states[i-1,:]   
         d          = Normal(0.0, sigma[p])        
-        prop_state[[p]] += rand(d,1)                 # proposal
-        prop_log_prob = log_posterior(prop_state) # get proposal target value
+        prop_state[p] += rand(d,1)[1]                 # proposal
+        prop_log_prob = log_posterior(data, prop_state) # get proposal target value
 
         u = log(rand(1)[1])
         mh_ratio = prop_log_prob - curr_log_prob
         if u < mh_ratio
             states[i,:]   = prop_state
-            accept[p]  += 1.0
-            acceptances  += 1.0
+            accept[p]  += 1
+            acceptances  += 1
             curr_log_prob = prop_log_prob
         else
-            states[i,:] = states[i-1,:]
+            states[i,:] .= @view(states[i-1,:])
         end
         props[p] += 1
 
@@ -84,7 +84,7 @@ function mh(iterations,parameter_count,target=0.5,up_dat=nothing)
             props[p]  = 0
         end
 
-        if mod(i, 10000) == 0
+        if mod(i, 100) == 0
             print(i, " ", sigma, "\n")
         end
 
@@ -105,10 +105,11 @@ function mh(iterations,parameter_count,target=0.5,up_dat=nothing)
     states
 end
 
-output = mh(1000000,4)
+@time output=mh(d, 50000, 6)
 
 plot(output[:,4])
 # density(output[:,1])
 # plot!(Normal(0,1))
 
 
+I
