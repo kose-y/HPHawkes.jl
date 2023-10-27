@@ -120,7 +120,8 @@ for (RealType, RealCType, CastCType, RealCVectorType, ZERO, defs) in [
                     );
 
                     const $RealCType innerContrib = mu0TauXprecDTauTprec *
-                                            pdf(distance * tauXprec) * pdf(timDiff*tauTprec) +
+                                            pdf(distance * tauXprec) * 
+                                            select($ZERO, pdf(timDiff*tauTprec), ($CastCType)isnotequal(timDiff,$ZERO)) +
                                             thetaSigmaXprecDOmega *
                                             select($ZERO, exp(-omega * timDiff), ($CastCType)isgreater(timDiff,$ZERO)) * pdf(distance * sigmaXprec);
                     sum += innerContrib;
