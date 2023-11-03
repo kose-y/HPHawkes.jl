@@ -10,19 +10,19 @@ function log_prior(x)
     - sum(x .^ 2) / 2.0
 end
 
-function log_likelihood(d,x)
+function log_likelihood(d::HPHawkes.HawkesStorage{T},x) where T
 #     T = RealType
-#     x = .exp(x)
-# # computes loglikelihood
-#     HPHawkes.loglik(d::HPHawkes.HawkesStorage{T}, 
-#     x[1], #sigmaXprec
-#     x[2], #tauXprec 
-#     x[3], #tauTprec, 
-#     x[4], #omega 
-#     x[5], #theta::T
-#     x[6], #mu0::T, 
-#     2)
-    0
+    x_ = exp.(x)
+# computes loglikelihood
+    HPHawkes.loglik(d, 
+    convert(T, x_[1]), #sigmaXprec
+    convert(T, x_[2]), #tauXprec 
+    convert(T, x_[3]), #tauTprec, 
+    convert(T, x_[4]), #omega 
+    convert(T, x_[5]), #theta::T
+    convert(T, x_[6]), #mu0::T, 
+    2)
+#     0
 end
 
 function log_posterior(x)
@@ -34,8 +34,13 @@ function delta(n)
 end
 
 
-function mh(data, iterations,parameter_count,target=0.5,up_dat=nothing)
-    sigma       = ones(parameter_count)          # proposal standard deviation
+function mh(data, iterations,parameter_count,target=0.5;
+    up_dat=nothing, sigma_init_scale=nothing, init=zeros(parameter_count))
+    if sigma_init_scale === nothing 
+        sigma       = ones(parameter_count)         # proposal standard deviation
+    else
+        sigma = sigma_init_scale
+    end
     #d           = Normal(0.0, sigma) # proposal distribution
     adapt_bound = 50
     accept      = zeros(Int, parameter_count)
@@ -50,8 +55,10 @@ function mh(data, iterations,parameter_count,target=0.5,up_dat=nothing)
     end
 
     states = zeros(iterations,parameter_count)
-    states[1,:] = rand(Normal(0.0, 1.0),parameter_count) 
+    states[1, :] .= init
+    likelihoods = zeros(iterations)
     curr_log_prob = log_posterior(data, states[1,:])
+    likelihoods[1] = curr_log_prob
 
     for i = 2:iterations
         p          = rand(1:parameter_count)      # choose parameter to update
@@ -70,6 +77,7 @@ function mh(data, iterations,parameter_count,target=0.5,up_dat=nothing)
         else
             states[i,:] .= @view(states[i-1,:])
         end
+        likelihoods[i] = curr_log_prob
         props[p] += 1
 
         if mod(props[p], adapt_bound) == 0 
@@ -101,11 +109,12 @@ function mh(data, iterations,parameter_count,target=0.5,up_dat=nothing)
             end
         end
     end
-    print("Acceptance rate: ", acceptances/(iterations-1))
-    states
+    println("Acceptance rate: ", acceptances/(iterations-1))
+    states, likelihoods
 end
 
-@time output=mh(d, 50000, 6)
+
+@time output, likelihoods = mh(d, 50000, 6; sigma_init_scale = [0.06, 0.03, 0.04, 0.05, 0.05, 0.03], init = [3.35, 2.23, 3.31, 1.94, 1.01, -0.35])
 
 plot(output[:,4])
 # density(output[:,1])
