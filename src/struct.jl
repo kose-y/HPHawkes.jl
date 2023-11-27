@@ -1,5 +1,6 @@
 struct HawkesStorage{T}
     m::Int32
+    likContribs::Vector{T}
     likContribs_reduced::Vector{T}
     locations_buff::cl.Buffer{T}
     times_buff::cl.Buffer{T}
@@ -19,6 +20,7 @@ function HawkesStorage{T}(ctx::cl.Context, locations::Array{T}, times::Array{T};
     @assert m % 8 == 0 "number of samples should be a multiple of 8 for now."
     k_sum, k_loglik = get_kernels(ctx, T)
     return HawkesStorage{T}(m,
+        Vector{T}(undef, m),
         Vector{T}(undef, 8),
         cl.Buffer(T, ctx, (:r, :copy), hostbuf=locations),
         cl.Buffer(T, ctx, (:r, :copy), hostbuf=times),

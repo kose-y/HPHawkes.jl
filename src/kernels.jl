@@ -2,7 +2,13 @@ const defs_Float64 = """
 static double pdf(double);
 
 static double pdf(double value) {
-    return 0.5 * M_SQRT1_2 * M_2_SQRTPI * exp( - pow(value,2.0) * 0.5);
+    return 0.5 * M_SQRT1_2 * M_2_SQRTPI * exp( - value * value * 0.5);
+}
+static double pdfpdf(double value1, double value2) {
+    return 0.5 * 0.5 * M_SQRT1_2 * M_SQRT1_2 * M_2_SQRTPI * M_2_SQRTPI * exp( - (value1 * value1 + value2 * value2) * 0.5);
+}
+static double exppdf(double value1, double value2) {
+    return 0.5 * M_SQRT1_2 * M_2_SQRTPI * exp(- value1 - value2 * value2 * 0.5);
 }
 static double cdf(double);
 
@@ -20,7 +26,17 @@ static float pdf(float);
 static float pdf(float value) {
     const float rSqrt2f = 0.70710678118655f;
     const float rSqrtPif = 0.56418958354775f;
-    return rSqrt2f * rSqrtPif * exp( - pow(value,2.0f) * 0.5f);
+    return rSqrt2f * rSqrtPif * exp( - value * value * 0.5f);
+}
+static float pdfpdf(float value1, float value2) {
+    const float rSqrt2f = 0.70710678118655f;
+    const float rSqrtPif = 0.56418958354775f;
+    return rSqrt2f * rSqrt2f * rSqrtPif * rSqrtPif * exp( - (value1 * value1 + value2 * value2) * 0.5f);
+}
+static float exppdf(float value1, float value2) {
+    const float rSqrt2f = 0.70710678118655f;
+    const float rSqrtPif = 0.56418958354775f;
+    return rSqrt2f * rSqrtPif * exp(-value1 -value2 * value2 * 0.5f);
 }
 static float cdf(float);
 static float cdf(float value) {
@@ -38,27 +54,27 @@ static float safe_exp(float value) {
     }
 }
 """
-const TPB=128
-for (RealType, RealCType, CastCType, RealCVectorType, ZERO, defs) in [
-    (Float32, "float", "int", "float8", "0.0f", defs_Float32),
-    (Float64, "double", "long", "double8", "0.0", defs_Float64)
+const TPB=256
+for (RealType, RealCType, IntCType, RealCVectorType8, RealCVectorType2, ZERO, defs) in [
+    (Float32, "float", "int", "float8", "float2", "0.0f", defs_Float32),
+    (Float64, "double", "long", "double8", "double2", "0.0", defs_Float64)
 ]
 @eval begin
     function compute_sum_kernel(::Val{$RealType})
         RealCType = $RealCType
-        CastCType = $CastCType
-        RealCVectorType = $RealCVectorType
+        IntCType = $IntCType
+        RealCVectorType8 = $RealCVectorType8
         ZERO = $ZERO
         return """
         #pragma OPENCL EXTENSION cl_khr_fp64 : enable
         __kernel void computeSum(
-            __global const $RealCVectorType *summand,
-            __global $RealCVectorType *outputSum,
+            __global const $RealCVectorType8 *summand,
+            __global $RealCVectorType8 *outputSum,
             const uint locationCount) {
             const uint lid = get_local_id(0);
             uint j = get_local_id(0);
-            __local $RealCVectorType scratch[$TPB];
-            $RealCVectorType sum = $ZERO;
+            __local $RealCVectorType8 scratch[$TPB];
+            $RealCVectorType8 sum = $ZERO;
             while (j < locationCount) {
                 sum += summand[j];
                 j += $TPB;
@@ -82,69 +98,89 @@ for (RealType, RealCType, CastCType, RealCVectorType, ZERO, defs) in [
     end
     function lik_contribs_kernel(::Val{$RealType})
         RealCType = $RealCType
-        CastCType = $CastCType
-        RealCVectorType = $RealCVectorType
+        IntCType = $IntCType
+        RealCVectorType2 = $RealCVectorType2
         ZERO = $ZERO
         return $defs * """
-            #pragma OPENCL EXTENSION cl_khr_fp64 : enable
-            __kernel void computeLikContribs(__global const $RealCVectorType *locations,
-                                            __global const $RealCType *times,
-                                            __global $RealCType *likContribs,
-                                            const $RealCType sigmaXprec,
-                                            const $RealCType tauXprec,
-                                            const $RealCType tauTprec,
-                                            const $RealCType omega,
-                                            const $RealCType theta,
-                                            const $RealCType mu0,
-                                            const int dimX,
-                                            const uint locationCount) {
-                const uint i = get_group_id(0);
-                const uint lid = get_local_id(0);
-                uint j = get_local_id(0);
-                __local $RealCType scratch[$TPB];
-                const $RealCVectorType vectorI = locations[i];
-                const $RealCType timeI = times[i];
-                $RealCType        sum = $ZERO;
-                $RealCType mu0TauXprecDTauTprec = mu0 * pow(tauXprec,dimX) * tauTprec;
-                $RealCType thetaSigmaXprecDOmega = theta * pow(sigmaXprec,dimX) * omega;
-                while (j < locationCount) {
-                    const $RealCType timDiff = timeI - times[j]; // timDiffs[i * locationCount + j];
-                    const $RealCVectorType vectorJ = locations[j];
-                    const $RealCVectorType difference = vectorI - vectorJ;
+        #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+        __kernel void computeLikContribs(__global const $RealCVectorType2 *locations,
+                                        __global const $RealCType *times,
+                                        __global $RealCType *likContribs,
+                                        const $RealCType sigmaXprec,
+                                        const $RealCType tauXprec,
+                                        const $RealCType tauTprec,
+                                        const $RealCType omega,
+                                        const $RealCType theta,
+                                        const $RealCType mu0,
+                                        const int dimX,
+                                        const uint locationCount) {
+            const uint i = get_group_id(0);
+            const uint lid = get_local_id(0);
+            uint j = get_local_id(0);
+            __local $RealCType scratch[$TPB];
+            __local $RealCType scratch2[$TPB];
+            const $RealCVectorType2 vectorI = locations[i];
+            const $RealCType timeI = times[i];
+            $RealCType        sum = $ZERO;
+            $RealCType mu0TauXprecDTauTprec = mu0 * pow(tauXprec,dimX) * tauTprec;
+            $RealCType thetaSigmaXprecDOmega = theta * pow(sigmaXprec,dimX) * omega;
+            while (j < locationCount) {
+                const $RealCType timDiff = timeI - times[j]; // timDiffs[i * locationCount + j];
+                const $RealCVectorType2 vectorJ = locations[j];
+                const $RealCVectorType2 difference = vectorI - vectorJ;
 
 
 
-                    const $RealCType distance = sqrt(
-                        dot(difference.lo, difference.lo) +
-                        dot(difference.hi, difference.hi)
-                    );
+                const $RealCType distance = sqrt(
+                    dot(difference.lo, difference.lo) +
+                    dot(difference.hi, difference.hi)
+                );
 
-                    const $RealCType innerContrib = mu0TauXprecDTauTprec *
-                                            pdf(distance * tauXprec) * 
-                                            select($ZERO, pdf(timDiff*tauTprec), ($CastCType)isnotequal(timDiff,$ZERO)) +
-                                            thetaSigmaXprecDOmega *
-                                            select($ZERO, exp(-omega * timDiff), ($CastCType)isgreater(timDiff,$ZERO)) * pdf(distance * sigmaXprec);
-                    sum += innerContrib;
-                    j += $TPB;
-                }
-                scratch[lid] = sum;
+                const $RealCType innerContrib = mu0TauXprecDTauTprec *
+                                        ((timDiff != 0) ? pdfpdf(distance * tauXprec, timDiff * tauTprec) : $ZERO) +
+                                        //pdf(distance * tauXprec) * pdf(timDiff*tauTprec) : $ZERO) +
+                                        thetaSigmaXprecDOmega *
+                                        ((timDiff > 0) ? exppdf(omega * timDiff, distance * sigmaXprec) : $ZERO);
+                                        //exp(-omega * timDiff) * pdf(distance * sigmaXprec) : $ZERO);
+                sum += innerContrib;
+                j += $TPB;
+            }
 
-                for(int k = 1; k < $TPB; k <<= 1) {
-                    barrier(CLK_LOCAL_MEM_FENCE);
-                    uint mask = (k << 1) - 1;
-                    if ((lid & mask) == 0) {
-                        scratch[lid] += scratch[lid + k];
-                    }
-                }
+            scratch[lid] = sum;
+            scratch2[lid] = sum;
 
+            barrier(CLK_LOCAL_MEM_FENCE);
+            for(int k = 1; k < $TPB; k <<= 1) {
                 barrier(CLK_LOCAL_MEM_FENCE);
-                if (lid == 0) {
-                    likContribs[i] = log(scratch[0]) + theta *
-                    ( exp(-omega*(times[locationCount-1]-times[i]))-1 ) - 
-                    mu0 * ( cdf((times[locationCount-1]-times[i])*tauTprec)-
-                    cdf(-times[i]*tauTprec) )   ;
+                uint mask = (k << 1) - 1;
+                if ((lid & mask) == 0) {
+                    if (scratch2[lid] < scratch2[lid + k])
+                        scratch2[lid] = scratch2[lid + k];
                 }
             }
+
+            barrier(CLK_LOCAL_MEM_FENCE);
+            $RealCType maximum = max(scratch2[0], ($RealCType) 1e-40);
+            scratch[lid] = scratch[lid] / maximum;
+            barrier(CLK_LOCAL_MEM_FENCE);
+            for(int k = 1; k < $TPB; k <<= 1) {
+                barrier(CLK_LOCAL_MEM_FENCE);
+                uint mask = (k << 1) - 1;
+                if ((lid & mask) == 0) {
+                    scratch[lid] += scratch[lid + k];
+                }
+            }
+            barrier(CLK_LOCAL_MEM_FENCE);
+            scratch[0] = max(scratch[0], ($RealCType) 1e-40);
+
+            barrier(CLK_LOCAL_MEM_FENCE);
+            if (lid == 0) {
+                likContribs[i] = log(maximum) + log(scratch[0]) + theta *
+                ( exp(-omega*(times[locationCount-1]-times[i]))-1 ) - 
+                mu0 * ( cdf((times[locationCount-1]-times[i])*tauTprec)-
+                cdf(-times[i]*tauTprec) ) ;
+            }
+        }
             """
         end
     end
