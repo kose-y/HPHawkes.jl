@@ -81,7 +81,8 @@ function mh(data, iterations,parameter_count,target=0.5;
         props[p] += 1
 
         if mod(props[p], adapt_bound) == 0 
-            accept_ratio = accept[p] / adapt_bound
+            accept_ratio = accept[p] / adapt_bound 
+            accept_ratio /= target
 
             if accept_ratio > 2.0
                 accept_ratio = 2.0
