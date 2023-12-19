@@ -81,12 +81,24 @@ function mh(data, iterations,parameter_count,target=0.5;
         props[p] += 1
 
         if mod(props[p], adapt_bound) == 0 
-            accept_ratio = accept[p] / adapt_bound
-            if accept_ratio > target
-                sigma[p] *= 1 + delta(i)
-            else
-                sigma[p] *= 1 - delta(i)
+            accept_ratio = accept[p] / adapt_bound 
+            accept_ratio /= target
+
+            if accept_ratio > 2.0
+                accept_ratio = 2.0
             end
+
+            if accept_ratio < 0.5
+                accept_ratio = 0.5
+            end
+
+            sigma[p] *= accept_ratio
+
+            # if accept_ratio > target
+            #     sigma[p] *= 1 + delta(i)
+            # else
+            #     sigma[p] *= 1 - delta(i)
+            # end
 
             accept[p] = 0
             props[p]  = 0
