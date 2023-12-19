@@ -1,5 +1,5 @@
 module HPHawkes
-using LinearAlgebra, OpenCL
+using LinearAlgebra, OpenCL, Pipe
 # Write your package code here.
 include("kernels.jl")
 include("struct.jl")
