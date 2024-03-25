@@ -15,7 +15,7 @@ function log_likelihood(d::HPHawkes.HawkesStorage{T},x) where T
     x_ = exp.(x)
 # computes loglikelihood
     HPHawkes.loglik(d, 
-    convert(T, x_[1]), #sigmaXprec
+    convert(T, x_[1] + x_[2]), #sigmaXprec is offest x_[1] + tauXprec.  This ensures that sigmaXprec is larger than tauXprec.
     convert(T, x_[2]), #tauXprec 
     convert(T, x_[3]), #tauTprec, 
     convert(T, x_[4]), #omega 
@@ -126,7 +126,7 @@ function mh(data, iterations,parameter_count,target=0.5;
 end
 
 
-@time output, likelihoods = mh(d, 50000, 6; sigma_init_scale = [0.06, 0.03, 0.04, 0.05, 0.05, 0.03], init = [3.35, 2.23, 3.31, 1.94, 1.01, -0.35])
+@time output, likelihoods = mh(d, 50000, 6; sigma_init_scale = [0.03, 0.03, 0.04, 0.05, 0.05, 0.03], init = [1.0, 2.23, 3.31, 1.94, 1.01, -0.35])
 
 plot(output[:,4])
 # density(output[:,1])
