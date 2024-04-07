@@ -162,6 +162,179 @@ for (RealType, RealCType, IntCType, RealCVectorType8, RealCVectorType2, ZERO, de
 
                 scratch[lid] = sum;
                 scratch2[lid] = sum;
+                // find maximum
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for(int k = 1; k < $TPB; k <<= 1) {
+                    barrier(CLK_LOCAL_MEM_FENCE);
+                    uint mask = (k << 1) - 1;
+                    if ((lid & mask) == 0) {
+                        if (scratch2[lid] < scratch2[lid + k])
+                            scratch2[lid] = scratch2[lid + k];
+                    }
+                }
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                // log-sum-exp trick, find maximum and normalize. 
+                $RealCType maximum = max(scratch2[0], ($RealCType) 1e-40);
+                scratch[lid] = scratch[lid] / maximum;
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for(int k = 1; k < $TPB; k <<= 1) {
+                    barrier(CLK_LOCAL_MEM_FENCE);
+                    uint mask = (k << 1) - 1;
+                    if ((lid & mask) == 0) {
+                        scratch[lid] += scratch[lid + k];
+                    }
+                }
+                barrier(CLK_LOCAL_MEM_FENCE);
+                scratch[0] = max(scratch[0], ($RealCType) 1e-40);
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                if (lid == 0) {
+                    likContribs[gid] = log(maximum) + log(scratch[0]) + theta *
+                    ( exp(-omega*(times[locationCount-1]-times[i]))-1 ) - 
+                    mu0 * ( cdf((times[locationCount-1]-times[i])*tauTprec)-
+                    cdf(-times[i]*tauTprec) ) ;
+                }
+            }
+            """
+    end
+    function lik_contribs_kernel_model1_constbackground(::Val{$RealType})
+        RealCType = $RealCType
+        IntCType = $IntCType
+        RealCVectorType2 = $RealCVectorType2
+        ZERO = $ZERO
+        return $defs * """
+            #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+            __kernel void computeLikContribsModel1_constbackground(__global const $RealCVectorType2 *locations,
+                                            __global const $RealCType *times,
+                                            __global $RealCType *likContribs,
+                                            const $RealCType sigmaXprec,
+                                            const $RealCType tauXprec,
+                                            const $RealCType tauTprec,
+                                            const $RealCType omega,
+                                            const $RealCType theta,
+                                            const $RealCType mu0,
+                                            const int dimX,
+                                            const uint locationStart,
+                                            const uint locationEnd,
+                                            const uint locationCount) {
+                const uint i = locationStart + get_group_id(0);
+                const uint gid = get_group_id(0);
+                const uint lid = get_local_id(0);
+                uint j = get_local_id(0);
+                __local $RealCType scratch[$TPB];
+                __local $RealCType scratch2[$TPB];
+                const $RealCVectorType2 vectorI = locations[i];
+                const $RealCType timeI = times[i];
+                $RealCType        sum = $ZERO;
+                $RealCType mu0TauXprecDTauTprec = mu0 * pow(tauXprec,dimX) * tauTprec;
+                $RealCType thetaSigmaXprecDOmega = theta * pow(sigmaXprec,dimX) * omega;
+                while (j < locationCount) {
+                    const $RealCType timDiff = timeI - times[j];
+                    const $RealCVectorType2 vectorJ = locations[j];
+                    const $RealCVectorType2 difference = vectorI - vectorJ;
+
+                    const $RealCType distancesq = dot(difference.lo, difference.lo) + dot(difference.hi, difference.hi);
+
+                    const $RealCType innerContrib = mu0TauXprecDTauTprec *
+                                            ((timDiff != 0) ? pdf(timDiff * tauTprec) : $ZERO) +
+                                            //pdf(distance * tauXprec) * pdf(timDiff*tauTprec) : $ZERO) +
+                                            thetaSigmaXprecDOmega *
+                                            ((timDiff > 0) ? exppdf_2sq(omega * timDiff, distancesq * sigmaXprec * sigmaXprec) : $ZERO);
+                                            //exp(-omega * timDiff) * pdf(distance * sigmaXprec) : $ZERO);
+                    sum += innerContrib;
+                    j += $TPB;
+                }
+
+                scratch[lid] = sum;
+                scratch2[lid] = sum;
+                // find maximum
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for(int k = 1; k < $TPB; k <<= 1) {
+                    barrier(CLK_LOCAL_MEM_FENCE);
+                    uint mask = (k << 1) - 1;
+                    if ((lid & mask) == 0) {
+                        if (scratch2[lid] < scratch2[lid + k])
+                            scratch2[lid] = scratch2[lid + k];
+                    }
+                }
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                // log-sum-exp trick, find maximum and normalize. 
+                $RealCType maximum = max(scratch2[0], ($RealCType) 1e-40);
+                scratch[lid] = scratch[lid] / maximum;
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for(int k = 1; k < $TPB; k <<= 1) {
+                    barrier(CLK_LOCAL_MEM_FENCE);
+                    uint mask = (k << 1) - 1;
+                    if ((lid & mask) == 0) {
+                        scratch[lid] += scratch[lid + k];
+                    }
+                }
+                barrier(CLK_LOCAL_MEM_FENCE);
+                scratch[0] = max(scratch[0], ($RealCType) 1e-40);
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                if (lid == 0) {
+                    likContribs[gid] = log(maximum) + log(scratch[0]) + theta *
+                    ( exp(-omega*(times[locationCount-1]-times[i]))-1 ) - 
+                    mu0 * ( cdf((times[locationCount-1]-times[i])*tauTprec)-
+                    cdf(-times[i]*tauTprec) ) ;
+                }
+            }
+            """
+    end
+    function lik_contribs_kernel_model2(::Val{$RealType})
+        RealCType = $RealCType
+        IntCType = $IntCType
+        RealCVectorType2 = $RealCVectorType2
+        ZERO = $ZERO
+        return $defs * """
+            #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+            __kernel void computeLikContribsModel2(__global const $RealCVectorType2 *locations,
+                                            __global const $RealCType *times,
+                                            __global const $RealCType *popdensity,
+                                            __global $RealCType *likContribs,
+                                            const $RealCType sigmaXprec,
+                                            const $RealCType tauXprec,
+                                            const $RealCType tauTprec,
+                                            const $RealCType omega,
+                                            const $RealCType theta,
+                                            const $RealCType mu0,
+                                            const int dimX,
+                                            const uint locationStart,
+                                            const uint locationEnd,
+                                            const uint locationCount) {
+                const uint i = locationStart + get_group_id(0);
+                const uint gid = get_group_id(0);
+                const uint lid = get_local_id(0);
+                uint j = get_local_id(0);
+                __local $RealCType scratch[$TPB];
+                __local $RealCType scratch2[$TPB];
+                const $RealCVectorType2 vectorI = locations[i];
+                const $RealCType timeI = times[i];
+                $RealCType        sum = $ZERO;
+                $RealCType mu0TauXprecDTauTprec = mu0 * pow(tauXprec,dimX) * tauTprec;
+                $RealCType thetaSigmaXprecDOmega = theta * pow(sigmaXprec,dimX) * omega;
+                while (j < locationCount) {
+                    const $RealCType timDiff = timeI - times[j];
+                    const $RealCVectorType2 vectorJ = locations[j];
+                    const $RealCVectorType2 difference = vectorI - vectorJ;
+
+                    const $RealCType distancesq = dot(difference.lo, difference.lo) + dot(difference.hi, difference.hi);
+
+                    const $RealCType innerContrib = mu0TauXprecDTauTprec *
+                                            ((timDiff != 0) ? pdfpdf_1sq(distancesq * tauXprec * tauXprec, timDiff * tauTprec) : $ZERO) +
+                                            //pdf(distance * tauXprec) * pdf(timDiff*tauTprec) : $ZERO) +
+                                            thetaSigmaXprecDOmega * popdensity[j] *
+                                            ((timDiff > 0) ? exppdf_2sq(omega * timDiff, distancesq * popdensity[j] * sigmaXprec * sigmaXprec) : $ZERO);
+                                            //exp(-omega * timDiff) * pdf(distance * sigmaXprec) : $ZERO);
+                    sum += innerContrib;
+                    j += $TPB;
+                }
+
+                scratch[lid] = sum;
+                scratch2[lid] = sum;
 
                 barrier(CLK_LOCAL_MEM_FENCE);
                 for(int k = 1; k < $TPB; k <<= 1) {
@@ -196,15 +369,110 @@ for (RealType, RealCType, IntCType, RealCVectorType8, RealCVectorType2, ZERO, de
                 }
             }
             """
-        end
     end
+    function lik_contribs_kernel_model2_constbackground(::Val{$RealType})
+        RealCType = $RealCType
+        IntCType = $IntCType
+        RealCVectorType2 = $RealCVectorType2
+        ZERO = $ZERO
+        return $defs * """
+            #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+            __kernel void computeLikContribsModel2_constbackground(
+                                            __global const $RealCVectorType2 *locations,
+                                            __global const $RealCType *times,
+                                            __global const $RealCType *popdensity,
+                                            __global $RealCType *likContribs,
+                                            const $RealCType sigmaXprec,
+                                            const $RealCType tauXprec,
+                                            const $RealCType tauTprec,
+                                            const $RealCType omega,
+                                            const $RealCType theta,
+                                            const $RealCType mu0,
+                                            const int dimX,
+                                            const uint locationStart,
+                                            const uint locationEnd,
+                                            const uint locationCount) {
+                const uint i = locationStart + get_group_id(0);
+                const uint gid = get_group_id(0);
+                const uint lid = get_local_id(0);
+                uint j = get_local_id(0);
+                __local $RealCType scratch[$TPB];
+                __local $RealCType scratch2[$TPB];
+                const $RealCVectorType2 vectorI = locations[i];
+                const $RealCType timeI = times[i];
+                $RealCType        sum = $ZERO;
+                $RealCType mu0TauXprecDTauTprec = mu0 * pow(tauXprec,dimX) * tauTprec;
+                $RealCType thetaSigmaXprecDOmega = theta * pow(sigmaXprec,dimX) * omega;
+                while (j < locationCount) {
+                    const $RealCType timDiff = timeI - times[j];
+                    const $RealCVectorType2 vectorJ = locations[j];
+                    const $RealCVectorType2 difference = vectorI - vectorJ;
 
+                    const $RealCType distancesq = dot(difference.lo, difference.lo) + dot(difference.hi, difference.hi);
+
+                    const $RealCType innerContrib = mu0TauXprecDTauTprec *
+                                            ((timDiff != 0) ? pdf(timDiff * tauTprec) : $ZERO) +
+                                            //pdf(distance * tauXprec) * pdf(timDiff*tauTprec) : $ZERO) +
+                                            thetaSigmaXprecDOmega * popdensity[j] *
+                                            ((timDiff > 0) ? exppdf_2sq(omega * timDiff, distancesq * popdensity[j] * sigmaXprec * sigmaXprec) : $ZERO);
+                                            //exp(-omega * timDiff) * pdf(distance * sigmaXprec) : $ZERO);
+                    sum += innerContrib;
+                    j += $TPB;
+                }
+
+                scratch[lid] = sum;
+                scratch2[lid] = sum;
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for(int k = 1; k < $TPB; k <<= 1) {
+                    barrier(CLK_LOCAL_MEM_FENCE);
+                    uint mask = (k << 1) - 1;
+                    if ((lid & mask) == 0) {
+                        if (scratch2[lid] < scratch2[lid + k])
+                            scratch2[lid] = scratch2[lid + k];
+                    }
+                }
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                $RealCType maximum = max(scratch2[0], ($RealCType) 1e-40);
+                scratch[lid] = scratch[lid] / maximum;
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for(int k = 1; k < $TPB; k <<= 1) {
+                    barrier(CLK_LOCAL_MEM_FENCE);
+                    uint mask = (k << 1) - 1;
+                    if ((lid & mask) == 0) {
+                        scratch[lid] += scratch[lid + k];
+                    }
+                }
+                barrier(CLK_LOCAL_MEM_FENCE);
+                scratch[0] = max(scratch[0], ($RealCType) 1e-40);
+
+                barrier(CLK_LOCAL_MEM_FENCE);
+                if (lid == 0) {
+                    likContribs[gid] = log(maximum) + log(scratch[0]) + theta *
+                    ( exp(-omega*(times[locationCount-1]-times[i]))-1 ) - 
+                    mu0 * ( cdf((times[locationCount-1]-times[i])*tauTprec)-
+                    cdf(-times[i]*tauTprec) ) ;
+                }
+            }
+            """
+    end
+end
 end
 function get_kernels(ctx::cl.Context, T::Type{<:AbstractFloat})
     p_sum = @pipe cl.Program(ctx, source=compute_sum_kernel(Val(T))) |> cl.build!(_; options= "-cl-fast-relaxed-math")
     k_sum = cl.Kernel(p_sum, "computeSum")
-03
+
     p_loglik = @pipe cl.Program(ctx, source=lik_contribs_kernel(Val(T))) |> cl.build!(_; options="-cl-fast-relaxed-math")
     k_loglik = cl.Kernel(p_loglik, "computeLikContribs")
-    return k_sum, k_loglik
+
+    p_loglik2 = @pipe cl.Program(ctx, source=lik_contribs_kernel_model2(Val(T))) |> cl.build!(_; options="-cl-fast-relaxed-math")
+    k_loglik2 = cl.Kernel(p_loglik2, "computeLikContribsModel2")
+
+    p_loglik1_cb = @pipe cl.Program(ctx, source=lik_contribs_kernel_model1_constbackground(Val(T))) |> cl.build!(_; options="-cl-fast-relaxed-math")
+    k_loglik1_cb = cl.Kernel(p_loglik1_cb, "computeLikContribsModel1_constbackground")
+
+    p_loglik2_cb = @pipe cl.Program(ctx, source=lik_contribs_kernel_model2_constbackground(Val(T))) |> cl.build!(_; options="-cl-fast-relaxed-math")
+    k_loglik2_cb = cl.Kernel(p_loglik2_cb, "computeLikContribsModel2_constbackground")
+    return k_sum, k_loglik, k_loglik2, k_loglik1_cb, k_loglik2_cb
 end
