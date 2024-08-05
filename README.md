@@ -11,7 +11,7 @@ pkg"add https://github.com/kose-y/HPHawkes.jl"
 
 The methods and applications of this software package are detailed in the following publication:
 
-*Ko S, Suchard MA, Holbrook AJ (2024). Scaling Hawkes processes to one million COVID-19 cases. [Arxiv 2407.11349](https://arxiv.org/html/2407.11349).*
+*Ko S, Suchard MA, Holbrook AJ (2024). Scaling Hawkes processes to one million COVID-19 cases. [Arxiv 2407.11349](https://arxiv.org/abs/2407.11349).*
 
 
 ## Acknowledgments
